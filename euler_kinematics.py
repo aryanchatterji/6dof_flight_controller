@@ -40,7 +40,7 @@ class RigidBodyState:
 
 
     # 7. NUMERICAL INTEGRATION LOOP (EULER METHOD)
-    def integrate_state(self,dt,linear_acceleration,angular_acceleration)
+    def integrate_state(self,dt,linear_acceleration,angular_acceleration):
 
          # Translational state update
              self.velocity += linear_acceleration * dt
