@@ -40,6 +40,7 @@ class RigidBodyState:
 
 
     # 7. NUMERICAL INTEGRATION LOOP (EULER METHOD)
+    
     def integrate_state(self,dt,linear_acceleration,angular_acceleration):
 
          # Translational state update
@@ -62,3 +63,21 @@ class RigidBodyState:
              # Update orientation
              self.orientation += np.array([phi_dot, theta_dot, psi_dot]) * dt
 
+     # 9. DISCRETE SIMULATION STEP
+
+    def run_simulation_step(self, dt, forces, moments):
+
+         # Executing kinetic derivative calculations
+         _, linear_accel, angular_accel = self.compute_kinetics(forces, moments)
+
+         # Executing numerical integration over time step dt
+         self.integrate_state(dt, linear_accel, angular_accel)
+
+         # 10. STATE TELEMETRY EXPORT
+
+         return {
+             "position": np.copy(self.position),
+             "velocity": np.copy(self.velocity),
+             "euler_angles": np.copy(self.orientation),
+             "body_rates": np.copy(self.angular_velocity)
+         }
