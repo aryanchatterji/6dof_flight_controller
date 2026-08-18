@@ -81,3 +81,34 @@ class RigidBodyState:
              "euler_angles": np.copy(self.orientation),
              "body_rates": np.copy(self.angular_velocity)
          }
+    
+# 11. SIMULATION ENVIRONMENT INITIALIZATION
+
+class FlightSimulation:
+      def __init__(self, rigid_body: RigidBodyState, dt: float, duration: float):
+            self.vehicle=rigid_body
+            self.dt=dt
+            self.steps=int(duration/dt)
+
+            # 12. TELEMETRY DATA PRE-ALLOCATION
+
+            self.time_series=np.zeros(self.steps)
+            self.position_log=np.zeros((self.steps,3))
+            self.orientation_log=np.zeros((self.steps,3))
+
+
+     # 13. TIME-MARCHING EXECUTION LOOP
+
+      def run_scenario(self, force_array, moment_array):
+            for i in range(self.steps):
+                  current_time=i*self.dt
+
+                  # Execute discrete time step
+                  state=self.vehicle.run_simulation_step(self.dt, force_array[i], moment_array[i])
+
+                  # Log discrete state variables
+                  self.time_series[i]=current_time
+                  self.position_log[i]=state["position"]
+                  self.orientation_log[i]=state["euler_angles"]
+
+            return self.time_series, self.position_log, self.orientation_log
