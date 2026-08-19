@@ -16,3 +16,10 @@ Building the rotational kinematics using standard Euler angle matrices (Roll, Pi
 ├── euler_kinematics.py     # 3x3 Rotation matrices & translational math
 ├── pid_tuner.py            # Proportional-Integral-Derivative surface deflections
 └── README.md
+
+### Architecture and Documentation Protocol
+> **Developer Note:** This repository utilizes a strict numbered 
+> macro-header architecture. This protocol was implemented to 
+> ensure code modularity, strictly manage matrix complexity, 
+> and prevent the structural fragmentation experienced during 
+> early iterations of previous simulation builds.
