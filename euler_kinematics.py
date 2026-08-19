@@ -112,3 +112,44 @@ class FlightSimulation:
                   self.orientation_log[i]=state["euler_angles"]
 
             return self.time_series, self.position_log, self.orientation_log
+
+# 14. FLIGHT TEST SCENARIOS
+
+class TestScenarios:
+    @staticmethod
+    def generate_pitch_maneuver(steps, dt):
+        force_array = np.zeros((steps, 3))
+        moment_array = np.zeros((steps, 3))
+
+        # Applying a constant pitch moment to verify 
+        # rotational integration loops.
+        for i in range(steps):
+            moment_array[i] = np.array([0.0, 50.0, 0.0])
+
+        return force_array, moment_array
+
+# 15. KINEMATIC SCENARIO EXECUTION
+
+if __name__ == "__main__":
+    # Standard rigid body init 
+    mass = 1500.0
+    inertia = [
+        [25000.0, 0.0, 0.0],
+        [0.0, 30000.0, 0.0],
+        [0.0, 0.0, 45000.0]
+    ]
+    
+    vehicle_state = RigidBodyState(mass, inertia)
+    
+    # Sim parameters
+    dt = 0.01
+    duration = 15.0 
+    
+    sim_env = FlightSimulation(vehicle_state, dt, duration)
+    forces, moments = TestScenarios.generate_pitch_maneuver(sim_env.steps, dt)
+    
+    # 16. TIME-MARCHING EXECUTION
+    
+    # Running the scenario to log telemetry 
+    time_data, pos_data, ori_data = sim_env.run_scenario(forces, moments)
+    print("Test maneuver complete. Ready for telemetry plotting.")
