@@ -153,3 +153,68 @@ if __name__ == "__main__":
     # Running the scenario to log telemetry 
     time_data, pos_data, ori_data = sim_env.run_scenario(forces, moments)
     print("Test maneuver complete. Ready for telemetry plotting.")
+
+# 17. SYSTEM TELEMETRY MONITOR
+
+class TelemetryMonitor:
+    def __init__(self, pitch_limit_deg=89.5):
+        self.pitch_limit = np.radians(pitch_limit_deg)
+
+    def check_state_validity(self, current_time, orientation):
+        phi, theta, psi = orientation
+        
+        # Standard telemetry integrity check for floating-point errors
+        if np.isnan(phi) or np.isnan(theta) or np.isnan(psi):
+            print(f"[ERROR] T={current_time:.2f}s : NaN encountered in orientation array.")
+            return False
+            
+        # Flight envelope monitor: alert if pitch exceeds standard vertical bounds
+        if np.abs(theta) >= self.pitch_limit:
+            print(f"[WARNING] T={current_time:.2f}s : Pitch angle exceeds test envelope.")
+            return False
+            
+        return True
+
+# 18. VERTICAL CLIMB TEST SCENARIO
+
+class ClimbScenarios:
+    @staticmethod
+    def generate_vertical_test(steps, dt):
+        force_array = np.zeros((steps, 3))
+        moment_array = np.zeros((steps, 3))
+
+        # Apply sustained pitch moment to evaluate vertical climb envelope
+        for i in range(steps):
+            force_array[i] = np.array([10000.0, 0.0, 0.0])
+            moment_array[i] = np.array([0.0, 1500.0, 0.0])
+
+        return force_array, moment_array
+
+# 19. MONITORED EXECUTION LOOP
+
+class MonitoredFlightSimulation(FlightSimulation):
+    def __init__(self, rigid_body, dt, duration):
+        super().__init__(rigid_body, dt, duration)
+        self.monitor = TelemetryMonitor()
+
+    def run_monitored_scenario(self, force_array, moment_array):
+        for i in range(self.steps):
+            current_time = i * self.dt
+            
+            state = self.vehicle.run_simulation_step(self.dt, force_array[i], moment_array[i])
+            
+            self.time_series[i] = current_time
+            self.position_log[i] = state["position"]
+            self.orientation_log[i] = state["euler_angles"]
+
+            # Halt simulation if state arrays corrupt
+            integrity_check = self.monitor.check_state_validity(current_time, state["euler_angles"])
+            if not integrity_check:
+                print(f"[SYSTEM] Simulation halted at Step {i}. Truncating telemetry arrays.")
+                return (
+                    self.time_series[:i], 
+                    self.position_log[:i], 
+                    self.orientation_log[:i]
+                )
+
+        return self.time_series, self.position_log, self.orientation_log
