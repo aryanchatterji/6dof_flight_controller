@@ -20,7 +20,7 @@ class RigidBodyState:
          self.inertia_matrix=np.array(inertia_tensor)
 
          # Pre-computed inverse to save loop processing power
-         self.inv_inertia=np.lingalg.inv
+         self.inv_inertia = np.linalg.inv(self.inertia_matrix)
 
     def compute_kinetics(state,forces,moments):
 
@@ -218,3 +218,21 @@ class MonitoredFlightSimulation(FlightSimulation):
                 )
 
         return self.time_series, self.position_log, self.orientation_log
+
+    def check_state_validity(self, current_time, orientation):
+        phi, theta, psi = orientation
+        
+        # Standard telemetry integrity check for floating-point errors
+        if np.isnan(phi) or np.isnan(theta) or np.isnan(psi):
+            print(f"[CRITICAL ERROR] T={current_time:.2f}s : NaN encountered in orientation array.")
+            # TODO (Bug #01): Root cause identified as Euler angle singularity at pitch = 90 deg.
+            # Kinematic matrix divides by zero. 
+            # Halting flight controller development to research non-singular rotational architectures.
+            return False
+            
+        # Flight envelope monitor: alert if pitch exceeds standard vertical bounds
+        if np.abs(theta) >= self.pitch_limit:
+            print(f"[WARNING] T={current_time:.2f}s : Pitch angle exceeds test envelope.")
+            return False
+            
+        return True
