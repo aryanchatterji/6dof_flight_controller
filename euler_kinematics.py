@@ -236,3 +236,13 @@ class MonitoredFlightSimulation(FlightSimulation):
             return False
             
         return True
+
+# 20. ARCHITECTURE ROADMAP AND KNOWN ISSUES
+
+# [BUG 01] EULER SINGULARITY (GIMBAL LOCK)
+# STATUS: Unresolved. Active Research Phase.
+# DESCRIPTION: The 3-axis kinematic integration encounters a division-by-zero
+# error during 90-degree vertical pitch maneuvers. 
+# ACTION ITEM: Halt Euler kinematic expansion. Research and implement 
+# 4-dimensional Quaternion arrays to bypass gimbal lock limitations.
+# TARGET: Phase 2 Integration.
