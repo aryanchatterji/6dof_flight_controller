@@ -246,3 +246,8 @@ class MonitoredFlightSimulation(FlightSimulation):
 # ACTION ITEM: Halt Euler kinematic expansion. Research and implement 
 # 4-dimensional Quaternion arrays to bypass gimbal lock limitations.
 # TARGET: Phase 2 Integration.
+
+# [UPDATE] DEPRECATION NOTICE
+# RigidBodyState Euler integration is formally marked for deprecation.
+# Quaternion mathematical formulation is actively ongoing. Euler kinematics 
+# will be retained temporarily solely as a benchmark baseline for the new architecture.
