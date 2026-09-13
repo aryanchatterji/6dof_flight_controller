@@ -251,3 +251,87 @@ class MonitoredFlightSimulation(FlightSimulation):
 # RigidBodyState Euler integration is formally marked for deprecation.
 # Quaternion mathematical formulation is actively ongoing. Euler kinematics 
 # will be retained temporarily solely as a benchmark baseline for the new architecture.
+
+
+# 21. QUATERNION MATHEMATICAL CORE
+
+class QuaternionMath:
+    @staticmethod
+    def normalize(q):
+        # Enforcing unit quaternion constraint to prevent integration drift
+        norm = np.linalg.norm(q)
+        if norm == 0:
+            return np.array([1.0, 0.0, 0.0, 0.0])
+        return q / norm
+
+    @staticmethod
+    def compute_derivative(q, angular_velocity):
+        p, q_rate, r = angular_velocity
+        
+        # 4x4 Skew-symmetric operator matrix for quaternion derivative
+        omega_matrix = np.array([
+            [0, -p, -q_rate, -r],
+            [p, 0, r, -q_rate],
+            [q_rate, -r, 0, p],
+            [r, q_rate, -p, 0]
+        ])
+        
+        q_dot = 0.5 * np.dot(omega_matrix, q)
+        return q_dot
+
+    @staticmethod
+    def to_euler(q):
+        # Euler extraction retained strictly for telemetry visualization
+        qw, qx, qy, qz = q
+        
+        # Roll (x-axis rotation)
+        phi = np.arctan2(2.0 * (qw * qx + qy * qz), 1.0 - 2.0 * (qx**2 + qy**2))
+        
+        # Pitch (y-axis rotation)
+        sinp = 2.0 * (qw * qy - qz * qx)
+        theta = np.where(np.abs(sinp) >= 1, np.sign(sinp) * np.pi / 2, np.arcsin(sinp))
+        
+        # Yaw (z-axis rotation)
+        psi = np.arctan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy**2 + qz**2))
+        
+        return np.array([phi, theta, psi])
+
+# 22. QUATERNION RIGID BODY STATE ARCHITECTURE
+
+class QuaternionRigidBodyState(RigidBodyState):
+    def __init__(self, mass, inertia_tensor):
+        super().__init__(mass, inertia_tensor)
+        
+        # Overriding 3-axis Euler orientation with 4D unit quaternion [qw, qx, qy, qz]
+        # Initialized to zero rotation state
+        self.orientation = np.array([1.0, 0.0, 0.0, 0.0])
+        
+    def integrate_state(self, dt, linear_acceleration, angular_acceleration):
+        # Standard translational state update
+        self.velocity += linear_acceleration * dt
+        self.position += self.velocity * dt
+
+        # Standard rotational state update
+        self.angular_velocity += angular_acceleration * dt
+
+        # Non-singular quaternion kinematic integration
+        q_dot = QuaternionMath.compute_derivative(self.orientation, self.angular_velocity)
+        self.orientation += q_dot * dt
+        
+        # State normalization
+        self.orientation = QuaternionMath.normalize(self.orientation)
+        
+    def run_simulation_step(self, dt, forces, moments):
+        # Executing kinetic derivative calculations
+        _, linear_accel, angular_accel = self.compute_kinetics(forces, moments)
+
+        # Executing discrete quaternion integration
+        self.integrate_state(dt, linear_accel, angular_accel)
+
+        return {
+            "position": np.copy(self.position),
+            "velocity": np.copy(self.velocity),
+            "quaternion": np.copy(self.orientation),
+            "euler_angles": QuaternionMath.to_euler(self.orientation),
+            "body_rates": np.copy(self.angular_velocity)
+        }
