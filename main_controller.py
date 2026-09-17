@@ -103,6 +103,41 @@ class QuaternionControl:
             error_vector = -error_vector
             
         return error_vector
+
+
+# 5. FLIGHT SIMULATION EXECUTION LOOP
+
+def run_flight_simulation(target_quat, duration, dt):
+    # Initialize baseline rigid body state (mass in kg, inertia tensor)
+    initial_state = QuaternionRigidBodyState(
+        mass=1.5,
+        inertia_tensor=np.diag([0.05, 0.05, 0.08])
+    )
+    
+    # Initialize flight controller
+    controller = FlightController(initial_state, dt)
+    
+    # Pre-allocate telemetry arrays for memory efficiency
+    time_steps = int(duration / dt)
+    history = {
+        'time': np.zeros(time_steps),
+        'orientation': np.zeros((time_steps, 4)),
+        'angular_velocity': np.zeros((time_steps, 3))
+    }
+    
+    # Execution loop
+    for step in range(time_steps):
+        current_time = step * dt
+        
+        # Execute active control step targeting the quaternion
+        state_telemetry = controller.execute_control_step(target_quat)
+        
+        # Log active telemetry
+        history['time'][step] = current_time
+        history['orientation'][step] = state_telemetry['orientation']
+        history['angular_velocity'][step] = state_telemetry['angular_velocity']
+        
+    return history
     
 
  
