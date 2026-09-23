@@ -138,6 +138,122 @@ def run_flight_simulation(target_quat, duration, dt):
         history['angular_velocity'][step] = state_telemetry['angular_velocity']
         
     return history
+
+
+# 6. TRANSLATIONAL POSITION AND VELOCITY CONTROLLER
+
+class TranslationalController:
+    def __init__(self, pos_gains, vel_gains, vehicle_mass):
+        self.pos_pid = PIDController(*pos_gains)
+        self.vel_pid = PIDController(*vel_gains)
+        self.mass = vehicle_mass
+        self.gravity = np.array([0.0, 0.0, 9.81])
+
+    def compute_target_acceleration(self, current_pos, target_pos, current_vel, target_vel, dt):
+        # Outer loop: Position error generates target velocity
+        pos_error = target_pos - current_pos
+        commanded_vel = target_vel + self.pos_pid.compute_command(pos_error, dt)
+        
+        # Inner loop: Velocity error generates target acceleration
+        vel_error = commanded_vel - current_vel
+        target_accel = self.vel_pid.compute_command(vel_error, dt)
+        
+        # Feed-forward gravity compensation
+        target_accel += self.gravity
+        
+        return target_accel
+
+# 7. THRUST VECTOR TO QUATERNION MAPPING
+
+class TrajectoryKinematics:
+    @staticmethod
+    def acceleration_to_quaternion(target_accel, target_yaw):
+        # Normalize target acceleration to find desired body Z-axis
+        thrust_norm = np.linalg.norm(target_accel)
+        if thrust_norm < 1e-6:
+            return np.array([1.0, 0.0, 0.0, 0.0]), 0.0
+            
+        z_body = target_accel / thrust_norm
+        
+        # Define heading vector based on target yaw
+        x_heading = np.array([np.cos(target_yaw), np.sin(target_yaw), 0.0])
+        
+        # Compute body Y-axis (cross product of Z-body and X-heading)
+        y_body = np.cross(z_body, x_heading)
+        y_norm = np.linalg.norm(y_body)
+        
+        if y_norm < 1e-6:
+            # Handle singularity (pitch +/- 90 degrees)
+            y_body = np.array([0.0, 1.0, 0.0])
+        else:
+            y_body /= y_norm
+            
+        # Compute true body X-axis to ensure orthonormal basis
+        x_body = np.cross(y_body, z_body)
+        
+        # Construct rotation matrix
+        R = np.column_stack((x_body, y_body, z_body))
+        
+        # Convert rotation matrix to quaternion (w, x, y, z)
+        trace = np.trace(R)
+        if trace > 0:
+            S = 2.0 * np.sqrt(trace + 1.0)
+            qw = 0.25 * S
+            qx = (R[2, 1] - R[1, 2]) / S
+            qy = (R[0, 2] - R[2, 0]) / S
+            qz = (R[1, 0] - R[0, 1]) / S
+        elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+            S = 2.0 * np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2])
+            qw = (R[2, 1] - R[1, 2]) / S
+            qx = 0.25 * S
+            qy = (R[0, 1] + R[1, 0]) / S
+            qz = (R[0, 2] + R[2, 0]) / S
+        elif R[1, 1] > R[2, 2]:
+            S = 2.0 * np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2])
+            qw = (R[0, 2] - R[2, 0]) / S
+            qx = (R[0, 1] + R[1, 0]) / S
+            qy = 0.25 * S
+            qz = (R[1, 2] + R[2, 1]) / S
+        else:
+            S = 2.0 * np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1])
+            qw = (R[1, 0] - R[0, 1]) / S
+            qx = (R[0, 2] + R[2, 0]) / S
+            qy = (R[1, 2] + R[2, 1]) / S
+            qz = 0.25 * S
+            
+        target_quat = np.array([qw, qx, qy, qz])
+        target_quat /= np.linalg.norm(target_quat)
+        
+        return target_quat, thrust_norm
+
+# 8. ACTUATOR MIXING MATRIX (QUAD-X CONFIGURATION)
+
+class ActuatorMixer:
+    def __init__(self, motor_limits=(0.0, 1.0)):
+        self.limit_min, self.limit_max = motor_limits
+        
+        # Allocation Matrix for standard Quad-X config
+        # Maps [Total Thrust, Roll Moment, Pitch Moment, Yaw Moment] to Motors [1, 2, 3, 4]
+        self.allocation_matrix = np.array([
+            [0.25, -0.25, -0.25, -0.25], # Motor 1 (Front Right, CCW)
+            [0.25,  0.25,  0.25, -0.25], # Motor 2 (Rear Left, CCW)
+            [0.25,  0.25, -0.25,  0.25], # Motor 3 (Front Left, CW)
+            [0.25, -0.25,  0.25,  0.25]  # Motor 4 (Rear Right, CW)
+        ])
+
+    def compute_motor_outputs(self, total_thrust, moments):
+        # Construct control vector: [F_z, M_x, M_y, M_z]
+        control_vector = np.array([total_thrust, moments[0], moments[1], moments[2]])
+        
+        # Execute matrix multiplication to isolate motor thrust requirements
+        motor_commands = np.dot(self.allocation_matrix, control_vector)
+        
+        # Enforce physical hardware saturation limits
+        motor_commands = np.clip(motor_commands, self.limit_min, self.limit_max)
+        
+        return motor_commands
+
+
     
 
  
