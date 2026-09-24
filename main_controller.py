@@ -254,6 +254,83 @@ class ActuatorMixer:
         return motor_commands
 
 
+# 9. 6-DOF CASCADE INTEGRATION LOOP
+
+class CascadeFlightController(FlightController):
+    def __init__(self, vehicle_state, dt, mass, motor_limits=(0.0, 20.0)):
+        super().__init__(vehicle_state, dt)
+        self.mass = mass
+        
+        # Initialize translational cascade with baseline mass
+        pos_gains = ([2.0, 2.0, 2.5], [0.01, 0.01, 0.01], [0.5, 0.5, 0.8])
+        vel_gains = ([4.0, 4.0, 5.0], [0.05, 0.05, 0.05], [0.1, 0.1, 0.1])
+        self.translational_controller = TranslationalController(pos_gains, vel_gains, mass)
+        
+        # Initialize actuator allocation matrix
+        self.mixer = ActuatorMixer(motor_limits)
+
+    def execute_full_cascade(self, current_pos, target_pos, current_vel, target_vel, target_yaw):
+        # 1. Outer Loop: Calculate target acceleration vector based on positional error
+        target_accel = self.translational_controller.compute_target_acceleration(
+            current_pos, target_pos, current_vel, target_vel, self.dt
+        )
+        
+        # 2. Kinematic Mapping: Convert linear thrust vector to target unit quaternion
+        target_quat, required_thrust_g = TrajectoryKinematics.acceleration_to_quaternion(
+            target_accel, target_yaw
+        )
+        
+        # 3. Inner Loop: Calculate rotational error and compute corrective torque moments
+        current_quat = self.vehicle.orientation
+        attitude_error = QuaternionControl.compute_error_vector(current_quat, target_quat)
+        corrective_moments = self.attitude_controller.compute_command(attitude_error, self.dt)
+        
+        # 4. Actuator Allocation: Convert total thrust (mass * accel) and moments to motor RPM/Force
+        total_thrust_N = required_thrust_g * self.mass
+        motor_commands = self.mixer.compute_motor_outputs(total_thrust_N, corrective_moments)
+        
+        return motor_commands, target_quat, corrective_moments
+
+# 10. FEA / MDO TELEMETRY BRIDGE
+
+class AeroStructBridge:
+    @staticmethod
+    def generate_fea_load_profile(motor_commands, moments, vehicle_state, time_stamp):
+        """
+        Extracts structural load telemetry for external Finite Element Analysis.
+        Formats the dynamic actuator forces and body torques to test wing/frame geometry under physical stress.
+        """
+        # Calculate total z-axis compressive load
+        total_z_load = np.sum(motor_commands)
+        
+        # Calculate differential sheer forces across motor mounts (Quad-X baseline)
+        differential_x = (motor_commands[0] + motor_commands[3]) - (motor_commands[1] + motor_commands[2])
+        differential_y = (motor_commands[0] + motor_commands[2]) - (motor_commands[1] + motor_commands[3])
+        
+        # Construct JSON-serializable structural payload for MDO pipeline
+        load_profile = {
+            "timestamp_sec": float(time_stamp),
+            "rigid_body_state": {
+                "orientation_quat": vehicle_state.orientation.tolist(),
+                "angular_velocity_rads": vehicle_state.angular_velocity.tolist()
+            },
+            "actuator_loads_N": {
+                "motor_1": float(motor_commands[0]),
+                "motor_2": float(motor_commands[1]),
+                "motor_3": float(motor_commands[2]),
+                "motor_4": float(motor_commands[3])
+            },
+            "structural_stress_vectors": {
+                "z_compression": float(total_z_load),
+                "x_shear": float(differential_x),
+                "y_shear": float(differential_y),
+                "torsion_z": float(moments[2])
+            }
+        }
+        
+        return load_profile
+
+
     
 
  
