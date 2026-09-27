@@ -58,3 +58,34 @@ class FitnessEvaluator:
             total_cost += time * error_mag * self.env.dt
             
         return total_cost
+    
+
+# 3. PARTICLE SWARM OPTIMIZATION (PSO) ENGINE
+
+class ParticleSwarmOptimizer:
+    def __init__(self, evaluator: FitnessEvaluator, swarm_size=20, max_iterations=50):
+        self.evaluator = evaluator
+        self.swarm_size = swarm_size
+        self.max_iterations = max_iterations
+        
+        # PSO Hyperparameters
+        self.w = 0.5  # Inertia weight (momentum)
+        self.c1 = 1.5 # Cognitive constant (personal exploration)
+        self.c2 = 1.5 # Social constant (swarm convergence)
+        
+        # Search Space Boundaries [Kp, Ki, Kd]
+        self.bounds_min = np.array([0.1, 0.0, 0.01])
+        self.bounds_max = np.array([10.0, 2.0, 1.0])
+        
+        # Initialize Swarm matrices
+        self.particles_position = np.random.uniform(
+            self.bounds_min, self.bounds_max, (self.swarm_size, 3)
+        )
+        self.particles_velocity = np.zeros((self.swarm_size, 3))
+        
+        # Initialize memory states for best performances
+        self.personal_best_positions = np.copy(self.particles_position)
+        self.personal_best_costs = np.full(self.swarm_size, np.inf)
+        
+        self.global_best_position = np.zeros(3)
+        self.global_best_cost = np.inf
