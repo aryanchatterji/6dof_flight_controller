@@ -89,3 +89,56 @@ class ParticleSwarmOptimizer:
         
         self.global_best_position = np.zeros(3)
         self.global_best_cost = np.inf
+
+
+    # 4. SWARM EXECUTION AND GAIN CONVERGENCE
+
+    def optimize(self):
+        """
+        Executes the PSO loop over the defined search space to converge 
+        on the optimal Kp, Ki, Kd gains minimizing the ITAE cost.
+        """
+        for iteration in range(self.max_iterations):
+            for i in range(self.swarm_size):
+                # Extract current particle gains [Kp, Ki, Kd]
+                current_gains = self.particles_position[i]
+                
+                # Compute ITAE penalty for the current position
+                cost = self.evaluator.compute_itae_cost(*current_gains)
+                
+                # Update personal best memory
+                if cost < self.personal_best_costs[i]:
+                    self.personal_best_costs[i] = cost
+                    self.personal_best_positions[i] = np.copy(current_gains)
+                    
+                    # Update global swarm best memory
+                    if cost < self.global_best_cost:
+                        self.global_best_cost = cost
+                        self.global_best_position = np.copy(current_gains)
+            
+            # Kinematic update for particle velocities and positions
+            for i in range(self.swarm_size):
+                r1 = np.random.rand(3)
+                r2 = np.random.rand(3)
+                
+                # Calculate cognitive (personal) and social (swarm) vectors
+                cognitive_velocity = self.c1 * r1 * (self.personal_best_positions[i] - self.particles_position[i])
+                social_velocity = self.c2 * r2 * (self.global_best_position - self.particles_position[i])
+                
+                # Apply inertia and update velocity
+                self.particles_velocity[i] = (self.w * self.particles_velocity[i]) + cognitive_velocity + social_velocity
+                
+                # Apply velocity to update position
+                self.particles_position[i] += self.particles_velocity[i]
+                
+                # Enforce hyperparameter search space boundaries
+                self.particles_position[i] = np.clip(
+                    self.particles_position[i], 
+                    self.bounds_min, 
+                    self.bounds_max
+                )
+                
+            # Log convergence telemetry
+            print(f"Iteration {iteration + 1}/{self.max_iterations} | Best ITAE Cost: {self.global_best_cost:.4f} | Optimal Gains: {self.global_best_position}")
+            
+        return self.global_best_position, self.global_best_cost
