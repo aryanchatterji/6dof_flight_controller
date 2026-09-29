@@ -142,3 +142,59 @@ class ParticleSwarmOptimizer:
             print(f"Iteration {iteration + 1}/{self.max_iterations} | Best ITAE Cost: {self.global_best_cost:.4f} | Optimal Gains: {self.global_best_position}")
             
         return self.global_best_position, self.global_best_cost
+
+
+import json
+import os
+
+# 5. GAIN EXPORT AND CONFIGURATION MANAGEMENT
+
+class ConfigManager:
+    def __init__(self, export_path="gains_config.json"):
+        self.export_path = export_path
+
+    def export_optimal_gains(self, optimal_gains, final_cost):
+        """
+        Serializes the optimized Kp, Ki, Kd gains and convergence telemetry 
+        into a JSON payload for ingestion by the main controller.
+        """
+        payload = {
+            "attitude_controller_gains": {
+                "kp": float(optimal_gains[0]),
+                "ki": float(optimal_gains[1]),
+                "kd": float(optimal_gains[2])
+            },
+            "convergence_telemetry": {
+                "final_itae_cost": float(final_cost)
+            }
+        }
+        
+        with open(self.export_path, 'w') as outfile:
+            json.dump(payload, outfile, indent=4)
+        print(f"Optimal gains securely written to {self.export_path}")
+
+
+# 6. MAIN EXECUTION ROUTINE
+
+if __name__ == "__main__":
+    print("INITIALIZING PARTICLE SWARM PID TUNER...")
+    
+    # Initialize tuning environment constraints
+    env = TuningEnvironment(dt=0.01, sim_duration=5.0)
+    evaluator = FitnessEvaluator(env)
+    
+    # Instantiate PSO Engine
+    pso_engine = ParticleSwarmOptimizer(
+        evaluator=evaluator, 
+        swarm_size=25, 
+        max_iterations=100
+    )
+    
+    print("COMMENCING SWARM OPTIMIZATION...")
+    optimal_gains, min_cost = pso_engine.optimize()
+    
+    print("OPTIMIZATION COMPLETE. EXPORTING GAINS...")
+    config_manager = ConfigManager()
+    config_manager.export_optimal_gains(optimal_gains, min_cost)
+    
+    print("SYSTEM HALTED.")
