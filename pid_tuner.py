@@ -49,7 +49,7 @@ class FitnessEvaluator:
             
             # Run active control step targeting the step-response quaternion
             state_telemetry = controller.execute_control_step(self.env.target_quaternion)
-            current_quat = state_telemetry['orientation']
+            current_quat = state_telemetry['quaternion']
             
             # Calculate angular error magnitude
             error_mag = np.linalg.norm(current_quat[1:4] - self.env.target_quaternion[1:4])
