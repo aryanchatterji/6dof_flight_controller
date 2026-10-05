@@ -40,3 +40,52 @@ class AeroelasticSolver:
         (Implementation reserved for next pipeline phase).
         """
         pass
+
+    def run_coupling_iteration(self, initial_velocity):
+        """
+        Executes the aeroelastic coupling loop until static equilibrium 
+        or maximum iterations are reached.
+        """
+        current_velocity = initial_velocity
+        iteration = 0
+        
+        while not self.env.system_converged and iteration < self.env.max_coupling_iterations:
+            prev_deformation = np.copy(self.structural_deformation)
+            
+            self.execute_static_equilibrium_pass(current_velocity)
+            self._compute_structural_displacement()
+            
+            residual = np.linalg.norm(self.structural_deformation - prev_deformation)
+            if residual < self.env.convergence_tolerance:
+                self.env.system_converged = True
+                
+            iteration += 1
+            
+        return self.env.system_converged
+
+    def _compute_structural_displacement(self):
+        """
+        Applies aerodynamic pressure to the structural mesh matrix to calculate 
+        displacement vectors.
+        """
+        # Baseline identity matrix proxy for structural stiffness
+        stiffness_matrix = np.eye(self.mesh_node_count) * 1e5
+        self.structural_deformation = np.linalg.solve(stiffness_matrix, self.aerodynamic_pressure)
+
+
+# 3. FLIGHT CONTROLLER INTEGRATION
+
+class SystemIntegrator:
+    def __init__(self, solver: AeroelasticSolver):
+        self.solver = solver
+        self.state = QuaternionRigidBodyState()
+        self.controller = FlightController(self.solver.active_gains)
+        
+    def initialize_flight_envelope(self, initial_altitude, target_attitude):
+        """
+        Initializes the 6-DOF kinematic state and assigns controller setpoints 
+        following structural equilibrium convergence.
+        """
+        self.state.position[2] = initial_altitude
+        self.controller.set_attitude_target(target_attitude)
+        self.solver.run_coupling_iteration(self.state.velocity)
