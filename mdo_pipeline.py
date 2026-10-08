@@ -76,16 +76,99 @@ class AeroelasticSolver:
 # 3. FLIGHT CONTROLLER INTEGRATION
 
 class SystemIntegrator:
-    def __init__(self, solver: AeroelasticSolver):
+    def __init__(self, solver: AeroelasticSolver, dt: float = 0.01):
         self.solver = solver
-        self.state = QuaternionRigidBodyState()
-        self.controller = FlightController(self.solver.active_gains)
+        self.dt = dt
         
-    def initialize_flight_envelope(self, initial_altitude, target_attitude):
+        # Initialize the rigid body with baseline mass and inertia parameters
+        self.state = QuaternionRigidBodyState(
+            mass=1.5,
+            inertia_tensor=np.diag([0.05, 0.05, 0.08])
+        )
+        
+        # Correctly initialize FlightController with state and dt
+        self.controller = FlightController(self.state, self.dt)
+        
+        # Inject the optimal PSO gains into the PID controller
+        gains = self.solver.active_gains
+        self.controller.attitude_controller.kp = np.array([gains['kp']] * 3)
+        self.controller.attitude_controller.ki = np.array([gains['ki']] * 3)
+        self.controller.attitude_controller.kd = np.array([gains['kd']] * 3)
+        
+        # Store target attitude for the execution loop
+        self.target_quaternion = np.array([1.0, 0.0, 0.0, 0.0])
+        
+    def initialize_flight_envelope(self, initial_altitude, target_attitude_quat):
         """
-        Initializes the 6-DOF kinematic state and assigns controller setpoints 
+        Initializes the 6-DOF kinematic state and sets the target quaternion 
         following structural equilibrium convergence.
         """
         self.state.position[2] = initial_altitude
-        self.controller.set_attitude_target(target_attitude)
+        self.target_quaternion = target_attitude_quat
         self.solver.run_coupling_iteration(self.state.velocity)
+
+    def update_control_surfaces(self, current_time):
+        """
+        Executes the control step targeting the specified quaternion and 
+        returns the corrective moments.
+        """
+        if not self.solver.env.system_converged:
+            raise RuntimeError("Aeroelastic solver must converge before control surface update.")
+            
+        # Execute the proper main_controller method 
+        state_telemetry = self.controller.execute_control_step(self.target_quaternion)
+        
+        # Extract and return the angular body rates and corrective moments needed for propagation
+        return state_telemetry
+    
+
+# 4. DYNAMIC EXECUTION MODULE
+
+class SimulationEnvironment:
+    def __init__(self, integrator: SystemIntegrator, time_step: float = 0.01):
+        self.integrator = integrator
+        self.dt = time_step
+        self.time_elapsed = 0.0
+        self.state_history = []
+
+    def execute_time_step(self):
+        """
+        Advances the simulation by one temporal increment, coupling aerodynamics,
+        structural mechanics, and 6-DOF kinematics.
+        """
+        self.integrator.solver.env.system_converged = False
+        
+        self.integrator.solver.aerodynamic_pressure = self._map_kinematics_to_pressure()
+        self.integrator.solver.run_coupling_iteration(self.integrator.state.velocity)
+        
+        control_outputs = self.integrator.update_control_surfaces(self.time_elapsed)
+        
+        # Delegate propagation to the external kinematics_core.py engine
+        linear_accel = control_outputs.get('linear_acceleration', np.zeros(3))
+        angular_accel = control_outputs.get('angular_acceleration', np.zeros(3))
+        self.integrator.state.integrate_state(self.dt, linear_accel, angular_accel)
+        
+        self._record_state()
+        self.time_elapsed += self.dt
+
+    def _map_kinematics_to_pressure(self):
+        """
+        Calculates dynamic pressure matrix across the mesh nodes based on 
+        current rigid body velocity vectors.
+        """
+        velocity_magnitude = np.linalg.norm(self.integrator.state.velocity)
+        dynamic_pressure_scalar = 0.5 * 1.225 * (velocity_magnitude ** 2)
+        
+        return np.ones((self.integrator.solver.mesh_node_count, 3)) * dynamic_pressure_scalar
+
+    def _record_state(self):
+        """
+        Appends current time-step data to the historical array for telemetry export.
+        """
+        current_state = {
+            'time': self.time_elapsed,
+            'position': np.copy(self.integrator.state.position),
+            'velocity': np.copy(self.integrator.state.velocity),
+            'convergence_status': self.integrator.solver.env.system_converged
+        }
+        self.state_history.append(current_state)
