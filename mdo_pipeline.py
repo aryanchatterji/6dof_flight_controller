@@ -142,12 +142,7 @@ class SimulationEnvironment:
         self.integrator.solver.run_coupling_iteration(self.integrator.state.velocity)
         
         control_outputs = self.integrator.update_control_surfaces(self.time_elapsed)
-        
-        # Delegate propagation to the external kinematics_core.py engine
-        linear_accel = control_outputs.get('linear_acceleration', np.zeros(3))
-        angular_accel = control_outputs.get('angular_acceleration', np.zeros(3))
-        self.integrator.state.integrate_state(self.dt, linear_accel, angular_accel)
-        
+    
         self._record_state()
         self.time_elapsed += self.dt
 
