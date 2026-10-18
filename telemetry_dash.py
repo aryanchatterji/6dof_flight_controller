@@ -51,9 +51,49 @@ class AttitudeVisualizer:
         self.parser = parser
         
     def plot_euler_convergence(self):
-
-        # Will handle conversion from quaternion arrays back to Euler for human-readable telemetry output.
-        pass
+        # Extract quaternions. Assumes format [qw, qx, qy, qz]
+        
+        quaternions = np.array([state['quaternion'] for state in self.parser.raw_data])
+        
+        qw = quaternions[:, 0]
+        qx = quaternions[:, 1]
+        qy = quaternions[:, 2]
+        qz = quaternions[:, 3]
+        
+        # Quaternion to Euler Conversion (Roll, Pitch, Yaw)
+        # Roll (x-axis rotation)
+        sinr_cosp = 2.0 * (qw * qx + qy * qz)
+        cosr_cosp = 1.0 - 2.0 * (qx**2 + qy**2)
+        roll = np.arctan2(sinr_cosp, cosr_cosp)
+        
+        # Pitch (y-axis rotation)
+        sinp = 2.0 * (qw * qy - qz * qx)
+       
+        pitch = np.where(np.abs(sinp) >= 1, np.sign(sinp) * (np.pi / 2), np.arcsin(sinp))
+        
+        # Yaw (z-axis rotation)
+        siny_cosp = 2.0 * (qw * qz + qx * qy)
+        cosy_cosp = 1.0 - 2.0 * (qy**2 + qz**2)
+        yaw = np.arctan2(siny_cosp, cosy_cosp)
+        
+        # Convert radians to degrees for readable dashboard output
+        roll_deg = np.degrees(roll)
+        pitch_deg = np.degrees(pitch)
+        yaw_deg = np.degrees(yaw)
+        
+        # Attitude Dynamics
+        plt.figure(figsize=(10, 6))
+        plt.plot(self.parser.time_array, roll_deg, label='Roll ($\phi$)', color='blue', linewidth=1.5)
+        plt.plot(self.parser.time_array, pitch_deg, label='Pitch ($\\theta$)', color='green', linewidth=1.5)
+        plt.plot(self.parser.time_array, yaw_deg, label='Yaw ($\psi$)', color='red', linewidth=1.5)
+        
+        plt.xlabel('Time (s)')
+        plt.ylabel('Attitude Angle (Degrees)')
+        plt.title('6DOF Attitude Telemetry: Euler Angle Convergence')
+        plt.legend(loc='upper right')
+        plt.grid(True, linestyle='--', alpha=0.7)
+        plt.tight_layout()
+        plt.show()
 
 # 4. SYSTEM CONVERGENCE DASHBOARD
 
@@ -71,3 +111,32 @@ class ConvergenceMonitor:
         print(f"Total Simulation Steps: {total_steps}")
         print(f"Converged Steps: {converged_steps}")
         print(f"System Stability Ratio: {ratio:.2f}%")
+
+# 5. MASTER EXECUTION PIPELINE
+
+if __name__ == "__main__":
+    # Test mock data structure 
+    mock_history = [
+        {
+            'time': t,
+            'position': [10*t, 5*np.sin(t), 1000 - 0.5*9.8*t**2],
+            'velocity': [10, 5*np.cos(t), -9.8*t],
+            'quaternion': [np.cos(t/2), np.sin(t/2)*0.1, np.sin(t/2)*0.05, 0], # Mock qw, qx, qy, qz
+            'convergence_status': True if t > 2 else False
+        } for t in np.linspace(0, 10, 100)
+    ]
+    
+    # Initialize Engine
+    telemetry = TelemetryParser(mock_history)
+    
+    # 1. Print Convergence Report
+    monitor = ConvergenceMonitor(telemetry)
+    monitor.generate_convergence_report()
+    
+    # 2. Render 3D Spatial Trajectory
+    trajectory = TrajectoryPlotter(telemetry)
+    trajectory.render_flight_path()
+    
+    # 3. Plot Attitude Dynamics (Quaternion to Euler)
+    attitude = AttitudeVisualizer(telemetry)
+    attitude.plot_euler_convergence()
