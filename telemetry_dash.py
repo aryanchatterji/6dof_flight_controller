@@ -42,7 +42,8 @@ class TrajectoryPlotter:
         self.ax.legend()
         
         plt.tight_layout()
-        plt.show()
+        plt.show(block=False)
+        plt.pause(0.5)
 
 # 3. ATTITUDE DYNAMICS PLOTTER
 
