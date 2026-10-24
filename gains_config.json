@@ -1,0 +1,10 @@
+{
+    "attitude_controller_gains": {
+        "kp": 10.0,
+        "ki": 1.4409716010838192,
+        "kd": 1.0
+    },
+    "convergence_telemetry": {
+        "final_itae_cost": 0.0024578604463940494
+    }
+}
